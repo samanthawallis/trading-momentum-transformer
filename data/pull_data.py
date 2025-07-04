@@ -10,7 +10,7 @@ from settings.default import PINNACLE_DATA_CUT, PINNACLE_DATA_FOLDER
 
 def pull_lobster_data(ticker: str) -> pd.DataFrame:
     return (
-        pd.read_parquet(os.path.join('data', 'processed', ticker, 'prices.parquet'))[['datetime', 'mid_price']]
+        pd.read_parquet(os.path.join('..', 'data', 'processed', ticker, 'prices.parquet'))[['datetime', 'mid_price']]
         .rename(columns={'datetime': 'date'})
         .set_index('date')
         .replace(0.0, np.nan)

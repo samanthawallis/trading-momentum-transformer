@@ -92,14 +92,19 @@ class ModelFeatures:
             ("ticker", DataTypes.CATEGORICAL, InputTypes.ID),
             ("date", DataTypes.DATE, InputTypes.TIME),
             ("target_returns", DataTypes.REAL_VALUED, InputTypes.TARGET),
-            ("norm_daily_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
-            ("norm_monthly_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
-            ("norm_quarterly_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
-            ("norm_biannual_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
-            ("norm_annual_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
-            ("macd_8_24", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
-            ("macd_16_48", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
-            ("macd_32_96", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("norm_second_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("norm_minute_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("norm_hour_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("norm_day_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("norm_week_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("norm_month_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("norm_quarter_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("macd_300_900", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("macd_600_1800", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("macd_1800_7200", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("macd_3600_14400", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("macd_7200_28800", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("macd_14400_86400", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
         ]
         df = df.dropna()
         df = df[df["year"] >= start_boundary].copy()
@@ -178,15 +183,19 @@ class ModelFeatures:
                     )
                 )
 
+        df['norm_second_return'] = pd.to_numeric(df['norm_second_return'], errors='coerce')
+
         self.transform_real_inputs = transform_real_inputs
 
         # for static_variables
         # self._column_definition.append(("ticker", DataTypes.CATEGORICAL, InputTypes.STATIC_INPUT))
-
-        test = df.loc[years >= test_boundary]
+       
+        # test = df.loc[years >= test_boundary]
+        test = df.iloc[int(len(df)*train_valid_ratio):]
 
         if split_tickers_individually:
-            trainvalid = df.loc[years < test_boundary]
+            # trainvalid = df.loc[years < test_boundary]
+            trainvalid = df.iloc[:int(len(df)*train_valid_ratio)]
             if lags:
                 tickers = (
                     trainvalid.groupby("ticker")["ticker"].count()
@@ -209,7 +218,8 @@ class ModelFeatures:
 
             test = test[test.ticker.isin(tickers)]
         else:
-            trainvalid = df.loc[years < test_boundary]
+            # trainvalid = df.loc[years < test_boundary]
+            trainvalid = df.iloc[:int(len(df)*train_valid_ratio)]
             dates = np.sort(trainvalid.index.unique())
             split_index = int(train_valid_ratio * len(dates))
             train_dates = pd.DataFrame({"date": dates[:split_index]})
@@ -243,11 +253,6 @@ class ModelFeatures:
                 tickers = list(train.ticker.unique())
             valid = valid[valid.ticker.isin(tickers)]
             test = test[test.ticker.isin(tickers)]
-
-        # don't think this is needed...
-        if test_end:
-            # test = test[test["year"] < ((test_end + add_buffer_years_to_test))]
-            test = test[test["year"] < test_end]
 
         test_with_buffer = pd.concat(
             [

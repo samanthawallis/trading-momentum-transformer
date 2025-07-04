@@ -18,7 +18,7 @@ def main(
     ticker: str, output_file_path: str, start_date: dt.datetime, end_date: dt.datetime, lookback_window_length :int
 ):
     data = pull_lobster_data(ticker)
-    data['seconds_returns'] = calc_returns(data['mid_price'])
+    data['second_returns'] = calc_returns(data['mid_price'])
 
     cpd.run_module(
         data, lookback_window_length, output_file_path, start_date, end_date, USE_KM_HYP_TO_INITIALISE_KC

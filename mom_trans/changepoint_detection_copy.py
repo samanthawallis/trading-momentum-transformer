@@ -1,16 +1,19 @@
 import csv
 import datetime as dt
 from typing import Dict, List, Optional, Tuple, Union
+import os
+
+# Force CPU-only usage for TensorFlow/GPflow
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Hide all GPUs from TensorFlow
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"   # Reduce TensorFlow logging
 
 import gpflow
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-# Force CPU-only usage for TensorFlow/GPflow
-import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Hide all GPUs
-tf.config.set_visible_devices([], 'GPU')   # Make no GPUs visible
+# Configure TensorFlow for CPU-only after import
+tf.config.set_visible_devices([], 'GPU')  # Make no GPUs visible to TensorFlow
 
 from gpflow.kernels import ChangePoints, Matern32
 from sklearn.preprocessing import StandardScaler
@@ -222,6 +225,25 @@ def changepoint_loc_and_score(
     """
 
     time_series_data = time_series_data_window.copy()
+    
+    # Enhanced data validation
+    if len(time_series_data) < 10:
+        print(f"Warning: Insufficient data points ({len(time_series_data)}). Minimum 10 required.")
+        return np.nan, np.nan, np.nan, {}, {}
+    
+    if time_series_data['Y'].isna().any():
+        print("Warning: NaN values found in Y data.")
+        return np.nan, np.nan, np.nan, {}, {}
+    
+    if time_series_data['Y'].std() == 0:
+        print("Warning: Zero variance in Y data.")
+        return np.nan, np.nan, np.nan, {}, {}
+    
+    # Check for infinite or extremely large values
+    if not np.isfinite(time_series_data['Y']).all():
+        print("Warning: Non-finite values found in Y data.")
+        return np.nan, np.nan, np.nan, {}, {}
+    
     Y_data = time_series_data[["Y"]].values
     time_series_data[["Y"]] = StandardScaler().fit(Y_data).transform(Y_data)
     # time_series_data.loc[:, "X"] = time_series_data.loc[:, "X"] - time_series_data.loc[time_series_data.index[0], "X"]
@@ -234,13 +256,18 @@ def changepoint_loc_and_score(
         # do not want to optimise again if the hyperparameters
         # were already initialised as the defaults
         if kM_variance == kM_lengthscale == kM_likelihood_variance == 1.0:
-            raise BaseException(
-                "Retry with default hyperparameters - already using default parameters."
-            ) from ex
-        (
-            kM_nlml,
-            kM_params,
-        ) = fit_matern_kernel(time_series_data)
+            # If already using defaults and still failing, return NA values
+            print(f"Warning: Matern kernel fitting failed with default parameters: {str(ex)}")
+            return np.nan, np.nan, np.nan, {}, {}
+        try:
+            (
+                kM_nlml,
+                kM_params,
+            ) = fit_matern_kernel(time_series_data)
+        except BaseException as ex2:
+            # If retry with defaults also fails, return NA values
+            print(f"Warning: Matern kernel fitting failed on retry: {str(ex2)}")
+            return np.nan, np.nan, np.nan, {}, {}
 
     is_cp_location_default = (
         (not kC_changepoint_location)
@@ -291,14 +318,19 @@ def changepoint_loc_and_score(
             == kC_steepness
             == 1.0
         ) and is_cp_location_default:
-            raise BaseException(
-                "Retry with default hyperparameters - already using default parameters."
-            ) from ex
-        (
-            changepoint_location,
-            kC_nlml,
-            kC_params,
-        ) = fit_changepoint_kernel(time_series_data)
+            # If already using defaults and still failing, return NA values
+            print(f"Warning: Changepoint kernel fitting failed with default parameters: {str(ex)}")
+            return np.nan, np.nan, np.nan, kM_params, {}
+        try:
+            (
+                changepoint_location,
+                kC_nlml,
+                kC_params,
+            ) = fit_changepoint_kernel(time_series_data)
+        except BaseException as ex2:
+            # If retry with defaults also fails, return NA values
+            print(f"Warning: Changepoint kernel fitting failed on retry: {str(ex2)}")
+            return np.nan, np.nan, np.nan, kM_params, {}
 
     cp_score = changepoint_severity(kC_nlml, kM_nlml)
     cp_loc_normalised = (time_series_data["X"].iloc[-1] - changepoint_location) / (
@@ -327,74 +359,116 @@ def run_module(
         end_date (dt.datetime, optional): end date for module. Defaults to None.
         use_kM_hyp_to_initialise_kC (bool, optional): initialise Changepoint kernel parameters using the paremters from fitting Matern 3/2 kernel. Defaults to True.
     """
-    if start_date and end_date:
-        first_window = time_series_data.loc[:start_date].iloc[
-            -(lookback_window_length + 1) :, :
-        ]
-        remaining_data = time_series_data.loc[start_date:end_date, :]
-        if remaining_data.index[0] == start_date:
-            remaining_data = remaining_data.iloc[1:, :]
-        else:
-            first_window = first_window.iloc[1:]
-        time_series_data = pd.concat([first_window, remaining_data]).copy()
-    elif not start_date and not end_date:
-        time_series_data = time_series_data.copy()
-    elif not start_date:
-        time_series_data = time_series_data.iloc[:end_date, :].copy()
-    elif not end_date:
-        first_window = time_series_data.loc[:start_date].iloc[
-            -(lookback_window_length + 1) :, :
-        ]
-        remaining_data = time_series_data.loc[start_date:, :]
-        if remaining_data.index[0] == start_date:
-            remaining_data = remaining_data.iloc[1:, :]
-        else:
-            first_window = first_window.iloc[1:]
-        time_series_data = pd.concat([first_window, remaining_data]).copy()
-
-    csv_fields = ["date", "t", "cp_location", "cp_location_norm", "cp_score"]
-    with open(output_csv_file_path, "w") as f:
-        writer = csv.writer(f)
-        writer.writerow(csv_fields)
-
-    print('CHECKPOINT #1')
-
-    time_series_data["date"] = time_series_data.index
-    time_series_data = time_series_data.reset_index(drop=True)
-    for window_end in range(lookback_window_length + 1, len(time_series_data)):
-
-        print('NEW WINDOW')
-
-        ts_data_window = time_series_data.iloc[
-            window_end - (lookback_window_length + 1) : window_end
-        ][["date", "seconds_returns"]].copy()
-        ts_data_window["X"] = ts_data_window.index.astype(float)
-        ts_data_window = ts_data_window.rename(columns={"seconds_returns": "Y"})
-        time_index = window_end - 1
-        window_date = ts_data_window["date"].iloc[-1].strftime("%Y-%m-%d %H:%M:%S")
-
-        try:
-            if use_kM_hyp_to_initialise_kC:
-                cp_score, cp_loc, cp_loc_normalised, _, _ = changepoint_loc_and_score(
-                    ts_data_window,
-                )
+    global MAX_ITERATIONS
+    original_max_iter = MAX_ITERATIONS
+    MAX_ITERATIONS = 25  # Ultra-fast setting
+    
+    try:
+        print(f"Ultra-fast module: Using {MAX_ITERATIONS} iterations per GP optimization")
+        
+        # Handle date filtering (same logic as original)
+        if start_date and end_date:
+            first_window = time_series_data.loc[:start_date].iloc[
+                -(lookback_window_length + 1) :, :
+            ]
+            remaining_data = time_series_data.loc[start_date:end_date, :]
+            if remaining_data.index[0] == start_date:
+                remaining_data = remaining_data.iloc[1:, :]
             else:
-                cp_score, cp_loc, cp_loc_normalised, _, _ = changepoint_loc_and_score(
-                    ts_data_window,
-                    k1_lengthscale=1.0,
-                    k1_variance=1.0,
-                    k2_lengthscale=1.0,
-                    k2_variance=1.0,
-                    kC_likelihood_variance=1.0,
-                )
+                first_window = first_window.iloc[1:]
+            time_series_data = pd.concat([first_window, remaining_data]).copy()
+        elif not start_date and not end_date:
+            time_series_data = time_series_data.copy()
+        elif not start_date:
+            time_series_data = time_series_data.iloc[:end_date, :].copy()
+        elif not end_date:
+            first_window = time_series_data.loc[:start_date].iloc[
+                -(lookback_window_length + 1) :, :
+            ]
+            remaining_data = time_series_data.loc[start_date:, :]
+            if remaining_data.index[0] == start_date:
+                remaining_data = remaining_data.iloc[1:, :]
+            else:
+                first_window = first_window.iloc[1:]
+            time_series_data = pd.concat([first_window, remaining_data]).copy()
 
-        except:
-            # write as NA when fails and will deal with this later
-            cp_score, cp_loc, cp_loc_normalised = "NA", "NA", "NA"
-
-        # #write the reults to the csv
-        with open(output_csv_file_path, "a") as f:
+        # Initialize CSV output
+        csv_fields = ["date", "t", "cp_location", "cp_location_norm", "cp_score"]
+        with open(output_csv_file_path, "w") as f:
             writer = csv.writer(f)
-            writer.writerow(
-                [window_date, time_index, cp_loc, cp_loc_normalised, cp_score]
-            )
+            writer.writerow(csv_fields)
+
+        # Prepare data
+        time_series_data["date"] = time_series_data.index
+        time_series_data = time_series_data.reset_index(drop=True)
+        
+        # Determine total windows to process
+        total_possible_windows = len(time_series_data) - lookback_window_length - 1
+        
+        print(f"Processing {total_possible_windows} windows with lookback length {lookback_window_length}")
+        
+        results = []
+        failed_count = 0
+        
+        for i, window_end in enumerate(range(lookback_window_length + 1, len(time_series_data))):
+                
+            # Progress updates every 50 windows
+            if i % 50 == 0:
+                print(f"Processing window {i}/{total_possible_windows} (Failed: {failed_count})")
+
+            # Extract window data
+            ts_data_window = time_series_data.iloc[
+                window_end - (lookback_window_length + 1) : window_end
+            ][["date", "second_returns"]].copy()
+            
+            ts_data_window["X"] = ts_data_window.index.astype(float)
+            ts_data_window = ts_data_window.rename(columns={"second_returns": "Y"})
+            time_index = window_end - 1
+            window_date = ts_data_window["date"].iloc[-1].strftime("%Y-%m-%d %H:%M:%S")
+
+            # Quick data validation with early exit for bad data
+            if (ts_data_window['Y'].isna().any() or 
+                ts_data_window['Y'].std() == 0 or 
+                len(ts_data_window) < 10):
+                cp_score, cp_loc, cp_loc_normalised = 'NA', 'NA', 'NA'
+                failed_count += 1
+            else:
+                try:
+                    if use_kM_hyp_to_initialise_kC:
+                        cp_score, cp_loc, cp_loc_normalised, _, _ = changepoint_loc_and_score(
+                            ts_data_window,
+                        )
+                    else:
+                        cp_score, cp_loc, cp_loc_normalised, _, _ = changepoint_loc_and_score(
+                            ts_data_window,
+                            k1_lengthscale=1.0,
+                            k1_variance=1.0,
+                            k2_lengthscale=1.0,
+                            k2_variance=1.0,
+                            kC_likelihood_variance=1.0,
+                        )
+                    
+                    # Handle NaN returns from optimization failures
+                    if np.isnan(cp_score) or np.isnan(cp_loc) or np.isnan(cp_loc_normalised):
+                        cp_score, cp_loc, cp_loc_normalised = 'NA', 'NA', 'NA'
+                        failed_count += 1
+                        
+                except Exception as e:
+                    # Handle optimization failures gracefully
+                    cp_score, cp_loc, cp_loc_normalised = "NA", "NA", "NA"
+                    failed_count += 1
+
+            # Store result
+            result = (window_date, time_index, cp_loc, cp_loc_normalised, cp_score)
+            results.append(result)
+            
+            # Write immediately to CSV to save memory
+            with open(output_csv_file_path, "a") as f:
+                writer = csv.writer(f)
+                writer.writerow(result)
+        
+        print(f"Ultra-fast module completed! Failed optimizations: {failed_count}/{len(results)}")
+        
+    finally:
+        # Restore original MAX_ITERATIONS setting
+        MAX_ITERATIONS = original_max_iter

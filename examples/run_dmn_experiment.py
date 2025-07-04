@@ -1,12 +1,21 @@
 import os
+import sys
 import argparse
-from settings.hp_grid import HP_MINIBATCH_SIZE
+
+# Add parent directory to path to access settings and mom_trans modules
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
+
 import pandas as pd
-from settings.default import QUANDL_TICKERS
-from settings.fixed_params import MODLE_PARAMS
-from mom_trans.backtest import run_all_windows
 import numpy as np
 from functools import reduce
+
+from settings.hp_grid import HP_MINIBATCH_SIZE
+# from settings.default import QUANDL_TICKERS
+QUANDL_TICKERS = ['AAPL']
+from settings.fixed_params import MODLE_PARAMS
+from mom_trans.backtest import run_all_windows
 
 # define the asset class of each ticker here - for this example we have not done this
 TEST_MODE = False
@@ -133,7 +142,7 @@ if __name__ == "__main__":
             metavar="c",
             type=str,
             nargs="?",
-            default="TFT-CPD-126-21",
+            default="LSTM",
             choices=[
                 "LSTM",
                 "LSTM-CPD-21",
@@ -159,7 +168,7 @@ if __name__ == "__main__":
             metavar="t",
             type=int,
             nargs="?",
-            default=2016,
+            default=2024,
             help="Training end year and test start year.",
         )
         parser.add_argument(
@@ -167,7 +176,7 @@ if __name__ == "__main__":
             metavar="e",
             type=int,
             nargs="?",
-            default=2022,
+            default=2026,
             help="Testing end year.",
         )
         parser.add_argument(
