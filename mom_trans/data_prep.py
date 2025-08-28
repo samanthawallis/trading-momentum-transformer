@@ -72,7 +72,6 @@ def deep_momentum_strategy_features(df_asset: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: input features
     """
-
     df_asset = df_asset[
         ~df_asset["close"].isna()
         | ~df_asset["close"].isnull()
@@ -114,13 +113,22 @@ def deep_momentum_strategy_features(df_asset: pd.DataFrame) -> pd.DataFrame:
         )
 
     # date features
+    if isinstance(df_asset.index, pd.MultiIndex):
+        # Drop one level of MultiIndex
+        df_asset.index = df_asset.index.droplevel(0)
+        # If still MultiIndex, reset completely
+        if isinstance(df_asset.index, pd.MultiIndex):
+            df_asset = df_asset.reset_index()
+        df_asset.index = pd.to_datetime(df_asset.index)
+
     if len(df_asset):
-        df_asset["day_of_week"] = df_asset.index.dayofweek
-        df_asset["day_of_month"] = df_asset.index.day
-        df_asset["week_of_year"] = df_asset.index.weekofyear
-        df_asset["month_of_year"] = df_asset.index.month
-        df_asset["year"] = df_asset.index.year
-        df_asset["date"] = df_asset.index  # duplication but sometimes makes life easier
+        df_asset_index = pd.to_datetime(df_asset.index)
+        df_asset["day_of_week"] = df_asset_index.dayofweek
+        df_asset["day_of_month"] = df_asset_index.day
+        df_asset["week_of_year"] = df_asset_index.isocalendar().week
+        df_asset["month_of_year"] = df_asset_index.month
+        df_asset["year"] = df_asset_index.year
+        df_asset["date"] = df_asset_index  # duplication but sometimes makes life easier
     else:
         df_asset["day_of_week"] = []
         df_asset["day_of_month"] = []

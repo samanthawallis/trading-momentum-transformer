@@ -322,9 +322,11 @@ def aggregate_and_save_all_windows(
                 filter_identifiers=(
                     None
                     if asset_class == "ALL"
-                    else asset_class_tickers.loc[
-                        asset_class, asset_class_tickers.columns[0]
-                    ].tolist()
+                    else (
+                        asset_class_tickers.loc[asset_class, asset_class_tickers.columns[0]]
+                        if isinstance(asset_class_tickers.loc[asset_class, asset_class_tickers.columns[0]], list)
+                        else [asset_class_tickers.loc[asset_class, asset_class_tickers.columns[0]]]
+                    )
                 ),
                 captured_returns_col=f"captured_returns{suffix}",
             )

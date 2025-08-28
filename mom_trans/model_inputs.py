@@ -578,7 +578,7 @@ class ModelFeatures:
                 active_entries = np.ones((arr.shape[0], arr.shape[1], arr.shape[2]))
                 for i in range(batch_size):
                     active_entries[i, sequence_lengths[i] :, :] = 0
-                sequence_lengths = np.array(sequence_lengths, dtype=np.int)
+                sequence_lengths = np.array(sequence_lengths, dtype=int)
 
                 if "active_entries" not in data_map:
                     data_map["active_entries"] = [
@@ -606,6 +606,8 @@ class ModelFeatures:
             # Combine all data
             for k in data_map:
                 data_map[k] = np.concatenate(data_map[k], axis=0)
+
+        print(data_map.keys)
 
         active_flags = (np.sum(data_map["active_entries"], axis=-1) > 0.0) * 1.0
         data_map["inputs"] = data_map["inputs"][: len(active_flags)]

@@ -167,7 +167,7 @@ if __name__ == "__main__":
             metavar="e",
             type=int,
             nargs="?",
-            default=2022,
+            default=2025,
             help="Testing end year.",
         )
         parser.add_argument(
