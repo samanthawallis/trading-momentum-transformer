@@ -64,9 +64,11 @@ def main(
                 features_w_cpd.index.name = "Date"
         else:
             features_w_cpd.index.name = "Date"
-        features_w_cpd.to_csv(output_file_path)
+        # features_w_cpd.to_csv(output_file_path)
+        features_w_cpd.to_parquet(output_file_path.replace(".csv", ".parquet"))
     else:
-        features.to_csv(output_file_path)
+        # features.to_csv(output_file_path)
+        features.to_parquet(output_file_path.replace(".csv", ".parquet"))
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""Many components in this file are adapted from https://github.com/google-research/google-research/tree/master/tft"""
+
 import tensorflow as tf
 from tensorflow import keras
 import gc
@@ -629,7 +629,7 @@ class TftDeepMomentumNetworkModel(DeepMomentumNetworkModel):
         self._attention_components = attention_components
 
         adam = keras.optimizers.Adam(
-            lr=self.learning_rate, clipnorm=self.max_gradient_norm
+            learning_rate=self.learning_rate, clipnorm=self.max_gradient_norm
         )
 
         model = keras.Model(inputs=all_inputs, outputs=outputs)

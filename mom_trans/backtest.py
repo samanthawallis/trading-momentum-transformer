@@ -1,3 +1,4 @@
+
 import os
 from typing import Tuple, List, Dict
 import tensorflow as tf
@@ -7,9 +8,7 @@ import numpy as np
 import shutil
 import gc
 import copy
-
 import json
-
 from mom_trans.model_inputs import ModelFeatures
 from mom_trans.deep_momentum_network import LstmDeepMomentumNetworkModel
 from mom_trans.momentum_transformer import TftDeepMomentumNetworkModel
@@ -21,9 +20,7 @@ from mom_trans.classical_strategies import (
     calc_net_returns,
     annual_volatility,
 )
-
 from settings.default import BACKTEST_AVERAGE_BASIS_POINTS
-
 from settings.hp_grid import HP_MINIBATCH_SIZE
 
 physical_devices = tf.config.list_physical_devices("GPU")
@@ -394,7 +391,8 @@ def run_single_window(
         )
         return
 
-    raw_data = pd.read_csv(features_file_path, index_col=0, parse_dates=True)
+    # raw_data = pd.read_csv(features_file_path, index_col=0, parse_dates=True)
+    raw_data = pd.read_parquet(features_file_path)
     raw_data["date"] = raw_data["date"].astype("datetime64[ns]")
 
     # TODO more/less than the one year test buffer
@@ -467,7 +465,7 @@ def run_single_window(
     print(f"performance (sliding window) = {performance_sw}")
 
     results_sw = results_sw.merge(
-        raw_data.reset_index()[["ticker", "date", "daily_vol"]].rename(
+        raw_data.reset_index()[["ticker", "date", "second_vol"]].rename(
             columns={"ticker": "identifier", "date": "time"}
         ),
         on=["identifier", "time"],
@@ -486,12 +484,18 @@ def run_single_window(
         years_lt=train_interval[2],
     )
     print(f"performance (fixed window) = {performance_fw}")
+
+    results_fw.to_csv('temporary_results_fw.csv')
+
     results_fw = results_fw.merge(
-        raw_data.reset_index()[["ticker", "date", "daily_vol"]].rename(
+        raw_data.reset_index()[["ticker", "date", "second_vol"]].rename(
             columns={"ticker": "identifier", "date": "time"}
         ),
         on=["identifier", "time"],
     )
+
+    results_fw.to_csv('temporary_results_fw_2.csv')
+
     results_fw = calc_net_returns(
         results_fw, BACKTEST_AVERAGE_BASIS_POINTS[1:], model_features.tickers
     )
@@ -626,11 +630,14 @@ def run_classical_methods(
         directory = _get_directory_name(tsmom_experiment_name, train_interval)
         if not os.path.exists(directory):
             os.mkdir(directory)
-        raw_data = pd.read_csv(features_file_path, parse_dates=True)
+        # raw_data = pd.read_csv(features_file_path, parse_dates=True)
+        raw_data = pd.read_parquet(features_file_path)
+        raw_data["date"] = pd.to_datetime(raw_data["date"])
         reference = pd.read_csv(
             f"results/{reference_experiment}/{train_interval[1]}-{train_interval[2]}/captured_returns_sw.csv",
             parse_dates=True,
         )
+        reference['time'] = pd.to_datetime(reference['time'])
         returns_data = raw_data.merge(
             reference[["time", "identifier", "returns"]],
             left_on=["date", "ticker"],

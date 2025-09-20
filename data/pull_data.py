@@ -1,39 +1,42 @@
+
 import os
 from typing import List
-
 import pandas as pd
-
 import numpy as np
-
 import sys
 sys.path.append("..")
 from settings.default import PINNACLE_DATA_CUT, PINNACLE_DATA_FOLDER
 
+# def pull_quandl_sample_data(ticker: str) -> pd.DataFrame:
+#     return (
+#         pd.read_csv(os.path.join("data", "quandl", f"{ticker}.csv"), parse_dates=[0])
+#         .rename(columns={"Trade Date": "date", "Date": "date", "Settle": "mid"})
+#         .set_index("date")
+#         .replace(0.0, np.nan)
+#     )
+
 def pull_quandl_sample_data(ticker: str) -> pd.DataFrame:
     return (
-        pd.read_csv(os.path.join("data", "quandl", f"{ticker}.csv"), parse_dates=[0])
-        .rename(columns={"Trade Date": "date", "Date": "date", "Settle": "close"})
+        pd.read_parquet(os.path.join("data", "quandl", f"{ticker}.parquet"), engine='fastparquet')
+        .rename(columns={"Trade Date": "date", "Date": "date", "Settle": "mid"})
         .set_index("date")
         .replace(0.0, np.nan)
     )
 
-
 def pull_pinnacle_data(ticker: str) -> pd.DataFrame:
     return pd.read_csv(
         os.path.join(PINNACLE_DATA_FOLDER, f"{ticker}_{PINNACLE_DATA_CUT}.CSV"),
-        names=["date", "open", "high", "low", "close", "volume", "open_int"],
+        names=["date", "open", "high", "low", "mid", "volume", "open_int"],
         parse_dates=[0],
         index_col=0,
-    )[["close"]].replace(0.0, np.nan)
-
+    )[["mid"]].replace(0.0, np.nan)
 
 def _fill_blanks(data: pd.DataFrame):
     return data[
-        data["close"].first_valid_index() : data["close"].last_valid_index()
+        data["mid"].first_valid_index() : data["mid"].last_valid_index()
     ].fillna(
         method="ffill"
     )  # .interpolate()
-
 
 def pull_pinnacle_data_multiple(
     tickers: List[str], fill_missing_dates=False

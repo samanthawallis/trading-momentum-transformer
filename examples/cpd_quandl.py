@@ -1,25 +1,21 @@
+
 import argparse
 import datetime as dt
-
 import pandas as pd
-
 import mom_trans.changepoint_detection as cpd
 from mom_trans.data_prep import calc_returns
 from data.pull_data import pull_quandl_sample_data
-
 from settings.default import CPD_DEFAULT_LBW, USE_KM_HYP_TO_INITIALISE_KC
-
 
 def main(
     ticker: str, output_file_path: str, start_date: dt.datetime, end_date: dt.datetime, lookback_window_length :int
 ):
     data = pull_quandl_sample_data(ticker)
-    data["daily_returns"] = calc_returns(data["close"])
+    data["daily_returns"] = calc_returns(data["mid"])
 
     cpd.run_module(
         data, lookback_window_length, output_file_path, start_date, end_date, USE_KM_HYP_TO_INITIALISE_KC
     )
-
 
 if __name__ == "__main__":
 
@@ -50,7 +46,7 @@ if __name__ == "__main__":
             metavar="s",
             type=str,
             nargs="?",
-            default="1990-01-01",
+            default="2073-01-01",
             help="Start date in format yyyy-mm-dd",
         )
         parser.add_argument(

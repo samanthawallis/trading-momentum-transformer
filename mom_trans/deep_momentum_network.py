@@ -1,20 +1,17 @@
+
 import os
 import json
 import pathlib
 import shutil
 import copy
-
 from keras_tuner.tuners.randomsearch import RandomSearch
 from abc import ABC, abstractmethod
-
 from tensorflow import keras
 import tensorflow as tf
 import numpy as np
 import pandas as pd
 import collections
-
 import keras_tuner as kt
-
 from settings.hp_grid import (
     HP_HIDDEN_LAYER_SIZE,
     HP_DROPOUT_RATE,
@@ -22,9 +19,7 @@ from settings.hp_grid import (
     HP_LEARNING_RATE,
     HP_MINIBATCH_SIZE,
 )
-
 from settings.fixed_params import MODLE_PARAMS
-
 from mom_trans.model_inputs import ModelFeatures
 from empyrical import sharpe_ratio
 
@@ -536,7 +531,7 @@ class LstmDeepMomentumNetworkModel(DeepMomentumNetworkModel):
 
         model = keras.Model(inputs=input, outputs=output)
 
-        adam = keras.optimizers.Adam(lr=learning_rate, clipnorm=max_gradient_norm)
+        adam = keras.optimizers.Adam(learning_rate=learning_rate, clipnorm=max_gradient_norm)
 
         sharpe_loss = SharpeLoss(self.output_size).call
 

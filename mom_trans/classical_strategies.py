@@ -1,8 +1,7 @@
+
 import numpy as np
 import pandas as pd
-
 from typing import Dict, List, Tuple
-
 from empyrical import (
     sharpe_ratio,
     calmar_ratio,
@@ -14,9 +13,9 @@ from empyrical import (
     # cum_returns,
 )
 
-VOL_LOOKBACK = 60  # for ex-ante volatility
+SEC_PER_DAY = 23400
+VOL_LOOKBACK = 60 * SEC_PER_DAY  # for ex-ante volatility
 VOL_TARGET = 0.15  # 15% volatility target
-
 
 def calc_performance_metrics(data: pd.DataFrame, metric_suffix="", num_identifiers = None) -> dict:
     """Performance metrics for evaluating strategy
@@ -38,7 +37,7 @@ def calc_performance_metrics(data: pd.DataFrame, metric_suffix="", num_identifie
         f"sortino_ratio{metric_suffix}": sortino_ratio(srs),
         f"max_drawdown{metric_suffix}": -max_drawdown(srs),
         f"calmar_ratio{metric_suffix}": calmar_ratio(srs),
-        f"perc_pos_return{metric_suffix}": len(srs[srs > 0.0]) / len(srs),
+        f"perc_pos_return{metric_suffix}": len(srs[srs > 0.0]) / len(srs) if len(srs) > 0 else 0.0,
         f"profit_loss_ratio{metric_suffix}": np.mean(srs[srs > 0.0])
         / np.mean(np.abs(srs[srs < 0.0])),
     }
@@ -67,7 +66,7 @@ def calc_net_returns(data: pd.DataFrame, list_basis_points: List[float], identif
     dfs = []
     for i in identifiers:
         data_slice = data[data["identifier"] == i].reset_index(drop=True)
-        annualised_vol = data_slice["daily_vol"]*np.sqrt(252)
+        annualised_vol = data_slice["second_vol"]*np.sqrt(252*23400)
         scaled_position = VOL_TARGET*data_slice["position"]/annualised_vol
         transaction_costs =  scaled_position.diff().abs().fillna(0.0).to_frame().to_numpy()* cost # TODO should probably fill first with initial cost
         net_captured_returns = data_slice[["captured_returns"]].to_numpy() - transaction_costs
@@ -120,7 +119,7 @@ def calc_returns(srs: pd.Series, day_offset: int = 1) -> pd.Series:
     return returns
 
 
-def calc_daily_vol(daily_returns):
+def calc_second_vol(daily_returns):
     return (
         daily_returns.ewm(span=VOL_LOOKBACK, min_periods=VOL_LOOKBACK)
         .std()
@@ -128,13 +127,13 @@ def calc_daily_vol(daily_returns):
     )
 
 
-def calc_vol_scaled_returns(daily_returns, daily_vol=pd.Series(None)):
+def calc_vol_scaled_returns(second_ret, second_vol=pd.Series(None)):
     """calculates volatility scaled returns for annualised VOL_TARGET of 15%
-    with input of pandas series daily_returns"""
-    if not len(daily_vol):
-        daily_vol = calc_daily_vol(daily_returns)
-    annualised_vol = daily_vol * np.sqrt(252)  # annualised
-    return daily_returns * VOL_TARGET / annualised_vol.shift(1)
+    with input of pandas series secondly_returns"""
+    if not len(second_vol):
+        second_vol = calc_second_vol(second_ret)
+    annualised_vol = second_vol * np.sqrt(252*SEC_PER_DAY)
+    return second_ret * VOL_TARGET / annualised_vol.shift(1)
 
 
 def calc_trend_intermediate_strategy(
@@ -199,8 +198,8 @@ class MACDStrategy:
             srs.ewm(halflife=_calc_halflife(short_timescale)).mean()
             - srs.ewm(halflife=_calc_halflife(long_timescale)).mean()
         )
-        q = macd / srs.rolling(63).std().fillna(method="bfill")
-        return q / q.rolling(252).std().fillna(method="bfill")
+        q = macd / srs.rolling(63*23400).std().bfill()
+        return q / q.rolling(252*23400).std().bfill()
 
     @staticmethod
     def scale_signal(y):

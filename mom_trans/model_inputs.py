@@ -1,11 +1,10 @@
-"""Model Inputs"""
+
 # import mom_trans.utils as utils
 import numpy as np
 import sklearn.preprocessing
 import pandas as pd
 import datetime as dt
 import enum
-
 from sklearn.preprocessing import MinMaxScaler
 
 # Type defintions
@@ -71,7 +70,7 @@ class ModelFeatures:
         self,
         df,
         total_time_steps,
-        start_boundary=1990,
+        start_boundary=2073,
         test_boundary=2020,
         test_end=2021,
         changepoint_lbws=None,
@@ -92,14 +91,24 @@ class ModelFeatures:
             ("ticker", DataTypes.CATEGORICAL, InputTypes.ID),
             ("date", DataTypes.DATE, InputTypes.TIME),
             ("target_returns", DataTypes.REAL_VALUED, InputTypes.TARGET),
+            ("norm_second_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("norm_minute_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("norm_hourly_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
             ("norm_daily_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
             ("norm_monthly_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
             ("norm_quarterly_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
             ("norm_biannual_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
             ("norm_annual_return", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
-            ("macd_8_24", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
-            ("macd_16_48", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
-            ("macd_32_96", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("macd_300_900", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("macd_600_1800", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("macd_1800_7200", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("macd_3600_14400", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("macd_7200_18000", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("macd_14400_23400", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("macd_23400_117000", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("macd_187200_561600", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("macd_374400_1123200", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
+            ("macd_748800_2246400", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT),
         ]
         df = df.dropna()
         df = df[df["year"] >= start_boundary].copy()
@@ -182,7 +191,7 @@ class ModelFeatures:
 
         # for static_variables
         # self._column_definition.append(("ticker", DataTypes.CATEGORICAL, InputTypes.STATIC_INPUT))
-
+        
         test = df.loc[years >= test_boundary]
 
         if split_tickers_individually:
@@ -291,14 +300,18 @@ class ModelFeatures:
                 valid, train_valid_sliding, self.lags
             )
             self.test_fixed = self._batch_data_smaller_output(test, False, self.lags)
-            self.test_sliding = self._batch_data_smaller_output(
-                test_with_buffer, True, self.lags
-            )
+            self.test_sliding = self._batch_data_smaller_output(test, False, self.lags)
         else:
+            print(f"DEBUG: About to call _batch_data for train data")
+            print(f"DEBUG: Train data shape: {train.shape}, empty: {train.empty}")
             self.train = self._batch_data(train, train_valid_sliding)
+            print(f"DEBUG: About to call _batch_data for valid data")
+            print(f"DEBUG: Valid data shape: {valid.shape}, empty: {valid.empty}")
             self.valid = self._batch_data(valid, train_valid_sliding)
+            print(f"DEBUG: About to call _batch_data for test data")
+            print(f"DEBUG: Test data shape: {test.shape}, empty: {test.empty}")
             self.test_fixed = self._batch_data(test, False)
-            self.test_sliding = self._batch_data(test_with_buffer, True)
+            self.test_sliding = self._batch_data(test, False)
 
     def set_scalers(self, df):
         """Calibrates scalers using the data supplied.
@@ -479,7 +492,7 @@ class ModelFeatures:
         """
         # TODO this works but is a bit of a mess
         data = data.copy()
-        data["date"] = data.index.strftime("%Y-%m-%d")
+        data["date"] = data.index.strftime("%Y-%m-%d %H:%M:%S")
 
         id_col = get_single_col_by_input_type(InputTypes.ID, self._column_definition)
         time_col = get_single_col_by_input_type(
@@ -578,7 +591,7 @@ class ModelFeatures:
                 active_entries = np.ones((arr.shape[0], arr.shape[1], arr.shape[2]))
                 for i in range(batch_size):
                     active_entries[i, sequence_lengths[i] :, :] = 0
-                sequence_lengths = np.array(sequence_lengths, dtype=int)
+                sequence_lengths = np.array(sequence_lengths, dtype=np.int64)
 
                 if "active_entries" not in data_map:
                     data_map["active_entries"] = [
@@ -607,8 +620,6 @@ class ModelFeatures:
             for k in data_map:
                 data_map[k] = np.concatenate(data_map[k], axis=0)
 
-        print(data_map.keys)
-
         active_flags = (np.sum(data_map["active_entries"], axis=-1) > 0.0) * 1.0
         data_map["inputs"] = data_map["inputs"][: len(active_flags)]
         data_map["outputs"] = data_map["outputs"][: len(active_flags)]
@@ -633,7 +644,7 @@ class ModelFeatures:
         """
         # TODO this works but is a bit of a mess
         data = data.copy()
-        data["date"] = data.index.strftime("%Y-%m-%d")
+        data["date"] = data.index.strftime("%Y-%m-%d %H:%M:%S")
 
         id_col = get_single_col_by_input_type(InputTypes.ID, self._column_definition)
         time_col = get_single_col_by_input_type(

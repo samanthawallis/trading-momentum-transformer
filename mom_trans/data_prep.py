@@ -1,18 +1,17 @@
-import os
 
+import os
 import numpy as np
 import pandas as pd
-
 from mom_trans.classical_strategies import (
     MACDStrategy,
     calc_returns,
-    calc_daily_vol,
+    calc_second_vol,
     calc_vol_scaled_returns,
 )
 
-VOL_THRESHOLD = 5  # multiple to winsorise by
+VOL_THRESHOLD = 5
 HALFLIFE_WINSORISE = 252
-
+SEC_PER_DAY = 23400
 
 def read_changepoint_results_and_fill_na(
     file_path: str, lookback_window_length: int
@@ -32,7 +31,7 @@ def read_changepoint_results_and_fill_na(
 
     return (
         pd.read_csv(file_path, index_col=0, parse_dates=True)
-        .fillna(method="ffill")
+        .ffill()
         .dropna()  # if first values are na
         .assign(
             cp_location_norm=lambda row: (row["t"] - row["cp_location"])
@@ -67,46 +66,59 @@ def deep_momentum_strategy_features(df_asset: pd.DataFrame) -> pd.DataFrame:
     """prepare input features for deep learning model
 
     Args:
-        df_asset (pd.DataFrame): time-series for asset with column close
+        df_asset (pd.DataFrame): time-series for asset with column mid
 
     Returns:
         pd.DataFrame: input features
     """
     df_asset = df_asset[
-        ~df_asset["close"].isna()
-        | ~df_asset["close"].isnull()
-        | (df_asset["close"] > 1e-8)  # price is zero
+        ~df_asset["mid"].isna()
+        | ~df_asset["mid"].isnull()
+        | (df_asset["mid"] > 1e-8)  # price is zero
     ].copy()
 
     # winsorize using rolling 5X standard deviations to remove outliers
-    df_asset["srs"] = df_asset["close"]
+    df_asset["srs"] = df_asset["mid"]
     ewm = df_asset["srs"].ewm(halflife=HALFLIFE_WINSORISE)
     means = ewm.mean()
     stds = ewm.std()
     df_asset["srs"] = np.minimum(df_asset["srs"], means + VOL_THRESHOLD * stds)
     df_asset["srs"] = np.maximum(df_asset["srs"], means - VOL_THRESHOLD * stds)
 
-    df_asset["daily_returns"] = calc_returns(df_asset["srs"])
-    df_asset["daily_vol"] = calc_daily_vol(df_asset["daily_returns"])
-    # vol scaling and shift to be next day returns
+    df_asset["second_returns"] = calc_returns(df_asset["srs"])
+    df_asset["second_vol"] = calc_second_vol(df_asset["second_returns"])
     df_asset["target_returns"] = calc_vol_scaled_returns(
-        df_asset["daily_returns"], df_asset["daily_vol"]
+        df_asset["second_returns"], df_asset["second_vol"]
     ).shift(-1)
 
-    def calc_normalised_returns(day_offset):
+    def calc_normalised_returns(sec_offset):
         return (
-            calc_returns(df_asset["srs"], day_offset)
-            / df_asset["daily_vol"]
-            / np.sqrt(day_offset)
+            calc_returns(df_asset["srs"], sec_offset)
+            / df_asset["second_vol"]
+            / np.sqrt(sec_offset)
         )
+    df_asset["norm_second_return"] = calc_normalised_returns(1)
+    df_asset["norm_minute_return"] = calc_normalised_returns(60)
+    df_asset["norm_hourly_return"] = calc_normalised_returns(3600)
+    df_asset["norm_daily_return"] = calc_normalised_returns(SEC_PER_DAY)
+    df_asset["norm_monthly_return"] = calc_normalised_returns(21*SEC_PER_DAY)
+    df_asset["norm_quarterly_return"] = calc_normalised_returns(63*SEC_PER_DAY)
+    df_asset["norm_biannual_return"] = calc_normalised_returns(126*SEC_PER_DAY)
+    df_asset["norm_annual_return"] = calc_normalised_returns(252*SEC_PER_DAY)
 
-    df_asset["norm_daily_return"] = calc_normalised_returns(1)
-    df_asset["norm_monthly_return"] = calc_normalised_returns(21)
-    df_asset["norm_quarterly_return"] = calc_normalised_returns(63)
-    df_asset["norm_biannual_return"] = calc_normalised_returns(126)
-    df_asset["norm_annual_return"] = calc_normalised_returns(252)
-
-    trend_combinations = [(8, 24), (16, 48), (32, 96)]
+    trend_combinations = [
+        (60, 300),         # 1m / 5m
+        (300, 900),        # 5m / 15m
+        (600, 1800),       # 10m / 30m
+        (1800, 7200),      # 30m / 2h
+        (3600, 14400),     # 1h / 4h
+        (7200, 18000),     # 2h / 5h
+        (14400, 23400),    # 4h / 1d
+        (23400, 117000),   # 1d / 5d
+        (187200, 561600),  # 8d / 24d
+        (374400, 1123200), # 16d / 48d
+        (748800, 2246400), # 32d / 96d
+    ]
     for short_window, long_window in trend_combinations:
         df_asset[f"macd_{short_window}_{long_window}"] = MACDStrategy.calc_signal(
             df_asset["srs"], short_window, long_window
@@ -123,20 +135,26 @@ def deep_momentum_strategy_features(df_asset: pd.DataFrame) -> pd.DataFrame:
 
     if len(df_asset):
         df_asset_index = pd.to_datetime(df_asset.index)
-        df_asset["day_of_week"] = df_asset_index.dayofweek
-        df_asset["day_of_month"] = df_asset_index.day
-        df_asset["week_of_year"] = df_asset_index.isocalendar().week
-        df_asset["month_of_year"] = df_asset_index.month
-        df_asset["year"] = df_asset_index.year
-        df_asset["date"] = df_asset_index  # duplication but sometimes makes life easier
+        df_asset['hour_of_day'] = df_asset_index.hour
+        df_asset['minute_of_hour'] = df_asset_index.minute
+        df_asset['second_of_minute'] = df_asset_index.second
+        df_asset['day_of_week'] = df_asset_index.dayofweek
+        df_asset['day_of_month'] = df_asset_index.day
+        df_asset['week_of_year'] = df_asset_index.isocalendar().week
+        df_asset['month_of_year'] = df_asset_index.month
+        df_asset['year'] = df_asset_index.year
+        df_asset['date'] = df_asset_index  # duplication but sometimes makes life easier
     else:
-        df_asset["day_of_week"] = []
-        df_asset["day_of_month"] = []
-        df_asset["week_of_year"] = []
-        df_asset["month_of_year"] = []
-        df_asset["year"] = []
-        df_asset["date"] = []
-        
+        df_asset['hour_of_day'] = []
+        df_asset['minute_of_hour'] = []
+        df_asset['second_of_minute'] = []
+        df_asset['day_of_week'] = []
+        df_asset['day_of_month'] = []
+        df_asset['week_of_year'] = []
+        df_asset['month_of_year'] = []
+        df_asset['year'] = []
+        df_asset['date'] = []
+
     return df_asset.dropna()
 
 

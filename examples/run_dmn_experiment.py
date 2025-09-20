@@ -1,3 +1,4 @@
+
 import os
 import argparse
 from settings.hp_grid import HP_MINIBATCH_SIZE
@@ -38,6 +39,10 @@ def main(
         architecture = "LSTM"
         lstm_time_steps = 63
         changepoint_lbws = [63]
+    elif experiment == "LSTM-CPD-7200":
+        architecture = "LSTM"
+        lstm_time_steps = 63
+        changepoint_lbws = [7200]
     elif experiment == "TFT":
         architecture = "TFT"
         lstm_time_steps = 252
@@ -58,6 +63,10 @@ def main(
         architecture = "TFT"
         lstm_time_steps = 63
         changepoint_lbws = [63]
+    elif experiment == "TFT-SHORT-CPD-7200":
+        architecture = "TFT"
+        lstm_time_steps = 63
+        changepoint_lbws = [7200]
     else:
         raise BaseException("Invalid experiment.")
 
@@ -102,14 +111,14 @@ def main(
         if changepoint_lbws:
             features_file_path = os.path.join(
                 "data",
-                f"quandl_cpd_{np.max(changepoint_lbws)}lbw.csv",
+                f"quandl_cpd_{np.max(changepoint_lbws)}lbw.parquet",
             )
         else:
             features_file_path = os.path.join(
                 "data",
-                "quandl_cpd_nonelbw.csv",
+                "quandl_cpd_nonelbw.parquet",
             )
-
+        
         run_all_windows(
             PROJECT_NAME,
             features_file_path,
@@ -133,16 +142,18 @@ if __name__ == "__main__":
             metavar="c",
             type=str,
             nargs="?",
-            default="TFT-CPD-126-21",
+            default="LSTM",
             choices=[
                 "LSTM",
                 "LSTM-CPD-21",
                 "LSTM-CPD-63",
+                "LSTM-CPD-7200",
                 "TFT",
                 "TFT-CPD-126-21",
                 "TFT-SHORT",
                 "TFT-SHORT-CPD-21",
                 "TFT-SHORT-CPD-63",
+                "TFT-SHORT-CPD-7200",
             ],
             help="Input folder for CPD outputs.",
         )
@@ -151,7 +162,7 @@ if __name__ == "__main__":
             metavar="s",
             type=int,
             nargs="?",
-            default=1990,
+            default=2000,
             help="Training start year",
         )
         parser.add_argument(
@@ -159,7 +170,7 @@ if __name__ == "__main__":
             metavar="t",
             type=int,
             nargs="?",
-            default=2016,
+            default=2024,
             help="Training end year and test start year.",
         )
         parser.add_argument(
@@ -167,7 +178,7 @@ if __name__ == "__main__":
             metavar="e",
             type=int,
             nargs="?",
-            default=2025,
+            default=2026,
             help="Testing end year.",
         )
         parser.add_argument(
